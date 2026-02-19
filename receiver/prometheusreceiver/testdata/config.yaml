@@ -2,6 +2,7 @@ prometheus:
 prometheus/customname:
   trim_metric_suffixes: true
   report_extra_scrape_metrics: true
+  scrape_on_shutdown: true
   target_allocator:
     endpoint: http://my-targetallocator-service
     interval: 30s

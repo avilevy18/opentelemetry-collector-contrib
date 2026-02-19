@@ -26,3 +26,7 @@ properties:
     $ref: ./internal/targetallocator.config
   trim_metric_suffixes:
     type: boolean
+  scrape_on_shutdown:
+    description: 'ScrapeOnShutdown triggers a final scrape before the receiver shuts down. Useful for ephemeral environments. Note: This bypasses the scrape interval. Exporters with strict timestamp requirements (like Google Cloud Monitoring) may reject these final data points if they occur too soon after the previous scrape.'
+    type: boolean
+    x-optional: true

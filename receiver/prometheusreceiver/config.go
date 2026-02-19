@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 	commonconfig "github.com/prometheus/common/config"
@@ -42,9 +43,16 @@ type Config struct {
 	// the config, service discovery, and targets for debugging purposes.
 	APIServer APIServer `mapstructure:"api_server"`
 
+	// ScrapeOnShutdown triggers a final scrape before the receiver shuts down. Useful
+	// for ephemeral environments.
+	// Note: This bypasses the scrape interval. Exporters with strict timestamp
+	// requirements (like Google Cloud Monitoring) may reject these final data points
+	// if they occur too soon after the previous scrape.
+	ScrapeOnShutdown bool `mapstructure:"scrape_on_shutdown"`
+
 	// For testing only.
-	ignoreMetadata bool
-	skipOffsetting bool
+	ignoreMetadata      bool
+	initialScrapeOffset *time.Duration
 }
 
 // Validate checks the receiver configuration is valid.

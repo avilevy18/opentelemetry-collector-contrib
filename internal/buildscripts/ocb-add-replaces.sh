@@ -16,4 +16,6 @@ for mod_path in $local_mods; do
     mod=${mod_path#"."} # remove initial dot
     echo "  - github.com/open-telemetry/opentelemetry-collector-contrib$mod => ../..$mod" >> "$CONFIG_OUT"
 done
+    TODO(avilevy): remove this
+    echo "  - github.com/prometheus/prometheus => github.com/avilevy18/prometheus v0.0.0-20260218213047-df7bd65f5827" >> "$CONFIG_OUT"
 echo "Wrote replace statements to $CONFIG_OUT"

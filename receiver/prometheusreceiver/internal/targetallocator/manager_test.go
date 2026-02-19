@@ -14,6 +14,7 @@ import (
 	promconfig "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/scrape"
+	"github.com/prometheus/prometheus/util/teststorage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component/componenttest"
@@ -83,7 +84,8 @@ func TestManagerShutdown(t *testing.T) {
 	discoveryManager := discovery.NewManager(ctx, promLogger, reg, sdMetrics)
 	require.NotNil(t, discoveryManager)
 
-	scrapeManager, err := scrape.NewManager(&scrape.Options{}, promLogger, nil, nil, reg)
+	app := teststorage.NewAppendable()
+	scrapeManager, err := scrape.NewManager(&scrape.Options{}, promLogger, nil, app, nil, reg)
 	require.NoError(t, err)
 	defer scrapeManager.Stop()
 

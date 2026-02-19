@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1627,6 +1628,130 @@ scrape_configs:
 	gotUA := <-uaCh
 	require.Contains(t, gotUA, set.BuildInfo.Command)
 	require.Contains(t, gotUA, set.BuildInfo.Version)
+}
+
+func TestScrapeOnShutdown(t *testing.T) {
+	noOffset := 0 * time.Nanosecond
+	largeOffset := 99 * time.Hour
+	oneSecondOffset := 1 * time.Second
+	tenSecondOffset := 10 * time.Second
+	interval := 10 * time.Second
+
+	for _, tcase := range []struct {
+		name                string
+		scrapeOnShutdown    bool
+		initialScrapeOffset *time.Duration
+		stopDelay           time.Duration
+		expectedScrapes     int
+	}{
+		{
+			name:                "no scrape on stop, with offset of 10s",
+			initialScrapeOffset: &tenSecondOffset,
+			stopDelay:           5 * time.Second,
+			expectedScrapes:     0,
+			scrapeOnShutdown:    false,
+		},
+		{
+			name:                "no scrape on stop, no offset",
+			initialScrapeOffset: &noOffset,
+			stopDelay:           5 * time.Second,
+			expectedScrapes:     1,
+			scrapeOnShutdown:    false,
+		},
+		{
+			name:                "scrape on stop, no offset",
+			initialScrapeOffset: &noOffset,
+			stopDelay:           5 * time.Second,
+			expectedScrapes:     2,
+			scrapeOnShutdown:    true,
+		},
+		{
+			name:                "scrape on stop, with large offset",
+			initialScrapeOffset: &largeOffset,
+			stopDelay:           5 * time.Second,
+			expectedScrapes:     1,
+			scrapeOnShutdown:    true,
+		},
+		{
+			name:                "scrape on stop after 5s, with offset of 1s",
+			initialScrapeOffset: &oneSecondOffset,
+			stopDelay:           5 * time.Second,
+			expectedScrapes:     2,
+			scrapeOnShutdown:    true,
+		},
+		{
+			name:                "scrape on stop after 5s, with offset of 10s",
+			initialScrapeOffset: &tenSecondOffset,
+			stopDelay:           5 * time.Second,
+			expectedScrapes:     1,
+			scrapeOnShutdown:    true,
+		},
+	} {
+		t.Run(tcase.name, func(t *testing.T) {
+			t.Parallel()
+			testScrapeOnShutdown(t, interval, tcase.scrapeOnShutdown, tcase.initialScrapeOffset, tcase.stopDelay, tcase.expectedScrapes)
+		})
+	}
+}
+
+func testScrapeOnShutdown(t *testing.T, interval time.Duration, scrapeOnShutdown bool, offset *time.Duration, stopDelay time.Duration, expectedScrapes int) {
+	var mu sync.Mutex
+	var requestCount int
+
+	svr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requestCount++
+		mu.Unlock()
+
+		_, err := w.Write([]byte(target1Page1))
+		assert.NoError(t, err)
+	}))
+	defer svr.Close()
+
+	promCfg, err := promConfig.Load(fmt.Sprintf(`
+scrape_configs:
+- job_name: foo
+  scrape_interval: %s
+  scrape_timeout: %s
+  static_configs:
+    - targets:
+      - %s
+`, interval.String(), interval.String(), strings.TrimPrefix(svr.URL, "http://")), promslog.NewNopLogger())
+	require.NoError(t, err)
+
+	cfg := &Config{
+		PrometheusConfig:    (*PromConfig)(promCfg),
+		ScrapeOnShutdown:    scrapeOnShutdown,
+		initialScrapeOffset: offset,
+	}
+
+	set := receivertest.NewNopSettings(metadata.Type)
+	sink := new(consumertest.MetricsSink)
+	r, err := newPrometheusReceiver(set, cfg, sink)
+	require.NoError(t, err)
+
+	ctx := t.Context()
+	require.NoError(t, r.start(ctx, componenttest.NewNopHost(),
+		prometheusComponentTestOptions{
+			discovery: prometheusDiscoveryTestOptions{updatert: 50 * time.Millisecond},
+			scrape:    prometheusScrapeTestOptions{discoveryReloadInterval: 50 * time.Millisecond},
+		},
+	))
+
+	assert.Eventually(t, func() bool {
+		return len(flattenTargets(r.scrapeManager.TargetsAll())) > 0
+	}, 2*time.Second, 50*time.Millisecond, "target was never discovered by the scrape manager")
+
+	time.Sleep(stopDelay)
+
+	require.NoError(t, r.Shutdown(context.WithoutCancel(ctx)))
+	assert.Empty(t, flattenTargets(r.scrapeManager.TargetsAll()))
+
+	assert.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return requestCount == expectedScrapes
+	}, 2*time.Second, 50*time.Millisecond, "Expected %d total scrapes, got %d", expectedScrapes, requestCount)
 }
 
 func newTestReceiver(t *testing.T, cfg *Config) (*pReceiver, *consumertest.MetricsSink) {

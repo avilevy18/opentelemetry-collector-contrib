@@ -61,6 +61,7 @@ func TestTargetAllocatorProvidesEmptyScrapeConfig(t *testing.T) {
 	pCfg, err := promConfig.Load("", promslog.NewNopLogger())
 	require.NoError(t, err)
 
+	noOffset := time.Duration(0)
 	config := &Config{
 		PrometheusConfig: (*PromConfig)(pCfg),
 		TargetAllocator: configoptional.Some(targetallocator.Config{
@@ -71,7 +72,7 @@ func TestTargetAllocatorProvidesEmptyScrapeConfig(t *testing.T) {
 			HTTPSDConfig: (*targetallocator.PromHTTPSDConfig)(promSDConfig),
 			Interval:     60 * time.Second,
 		}),
-		skipOffsetting: true,
+		initialScrapeOffset: &noOffset,
 	}
 
 	settings := receivertest.NewNopSettings(metadata.Type)

@@ -814,9 +814,10 @@ func testComponent(t *testing.T, targets []*testData, alterConfig func(*Config),
 	require.NoErrorf(t, err, "Failed to create Prometheus config: %v", err)
 	defer mp.Close()
 
+	noOffset := time.Duration(0)
 	config := &Config{
-		PrometheusConfig: cfg,
-		skipOffsetting:   true,
+		PrometheusConfig:    cfg,
+		initialScrapeOffset: &noOffset,
 	}
 	if alterConfig != nil {
 		alterConfig(config)
